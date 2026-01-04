@@ -1,0 +1,31 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: train-common
+  namespace: argo
+spec:
+  templates:
+  - name: train-eval 
+    inputs:
+      artifacts:
+      - name: params 
+        path: /data/params.json
+      - name: dataset 
+        path: /data/dataset.csv  
+    container: 
+      image: jupyter/scipy-notebook:latest
+      command: ["sh","-c"] 
+      args: 
+        - |
+          python /app/train_template.py      
+      volumeMounts:
+      - name: scripts
+        mountPath: /app 
+    outputs:
+      artifacts:
+      - name: model 
+        path: /tmp/model.pkl
+  volumes:
+  - name: scripts 
+    configMap: 
+      name: cron-scripts 

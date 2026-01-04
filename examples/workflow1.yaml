@@ -1,0 +1,44 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata: 
+  generateName: artifact-passing-
+
+spec:
+  entrypoint: artifact-example
+  templates:
+  - name: artifact-example
+    steps:
+    - - name: generate-artifact
+        template: generate
+    - - name: consume-artifact
+        template: print-message
+        arguments:
+          artifacts:
+          - name: message
+            from: "{{steps.generate-artifact.outputs.artifacts.hello-art}}"
+
+  - name: generate
+    container: 
+      image: alpine:3.19
+      command: [sh, -c]
+      args: 
+        - | 
+          echo "hello world from argo" > /tmp/hello_world.txt
+          echo "generated at: $(date)" >> /tmp/hello_world.txt
+    outputs:
+      artifacts:
+      - name: hello-art
+        path: /tmp/hello_world.txt
+
+  - name: print-message
+    inputs:
+      artifacts:
+      - name: message
+        path: /tmp/message
+    container:
+      image: alpine:3.19 
+      command: [sh, -c]
+      args:
+        - |
+          echo "Architect Content:"
+          cat /tmp/message

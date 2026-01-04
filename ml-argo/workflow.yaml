@@ -1,0 +1,67 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata: 
+  generateName: ml-script-exp-
+spec:
+  entrypoint: ml-pipeline
+
+  arguments:
+    parameters:
+    - name: lr
+      value: "0.1"
+
+  templates:
+  - name: ml-pipeline
+    dag:
+      tasks:
+      - name: generate-data
+        template: generate-data 
+      
+      - name: train-model
+        template: train-model
+        dependencies: [generate-data]
+        arguments:
+          parameters: 
+          - name: lr 
+            value: "{{workflow.parameters.lr}}"
+          artifacts:
+          - name: dataset 
+            from: "{{tasks.generate-data.outputs.artifacts.dataset}}"
+
+  - name: generate-data
+    container:
+      image: jupyter/scipy-notebook:latest
+      command: ["python", "/app/generate_data.py"]
+      volumeMounts:
+      - name: scripts
+        mountPath: /app
+    outputs:
+      artifacts:
+      - name: dataset 
+        path: dataset.csv 
+
+  - name: train-model 
+    inputs:
+      parameters:
+      - name: lr
+      artifacts:
+      - name: dataset 
+        path: /data/dataset.csv 
+    container:
+      image: jupyter/scipy-notebook:latest
+      command:
+        - python 
+        - /app/train_model.py 
+        - "{{inputs.parameters.lr}}"
+      volumeMounts:
+      - name: scripts 
+        mountPath: /app 
+    outputs:
+      artifacts:
+      - name: model
+        path: model.pkl 
+  
+  volumes:
+  - name: scripts 
+    configMap:
+      name: ml-scripts

@@ -1,0 +1,49 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: dag-demo-
+spec:
+  entrypoint: ml-pipeline
+
+  templates:
+  - name: ml-pipeline
+    dag:
+      tasks:
+      - name: preprocess
+        template: preprocess
+
+      - name: train
+        template: train
+        dependencies: [preprocess]
+
+      - name: evaluate
+        template: evaluate
+        dependencies: [train]
+
+  - name: preprocess
+    container:
+      image: alpine:3.19
+      command: [sh, -c]
+      args:
+        - |
+          echo "preprocessing data..."
+          sleep 2
+
+  - name: train
+    container:
+      image: alpine:3.19
+      command: [sh, -c]
+      args:
+        - |
+          echo "training model..."
+          sleep 2
+
+  - name: evaluate
+    container:
+      image: alpine:3.19
+      command: [sh, -c]
+      args:
+        - |
+          echo "evaluating model..."
+          sleep 2
+

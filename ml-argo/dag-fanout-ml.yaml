@@ -1,0 +1,110 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata: 
+  generateName: ml-script-exp-
+spec:
+  entrypoint: ml-pipeline
+
+  arguments:
+    parameters:
+    - name: lr
+      value: "0.1"
+
+  templates:
+  - name: ml-pipeline
+    dag:
+      tasks:
+      - name: generate-data
+        template: generate-data 
+      
+      - name: train-eval
+        template: train-eval 
+        dependencies: [generate-data]
+        arguments:
+          parameters: 
+          - name: lr 
+            value: "{{item}}"
+          artifacts:
+          - name: dataset 
+            from: "{{tasks.generate-data.outputs.artifacts.dataset}}"
+        withItems:
+        - "0.01"
+        - "0.1"
+        - "1.0"
+      
+      - name: select-best 
+        template: select-best
+        dependencies: [train-eval]
+        arguments:
+          parameters:
+          - name: lr_list
+            value: "{{tasks.train-eval.outputs.parameters.lr}}"
+          - name: acc_list
+            value: "{{tasks.train-eval.outputs.parameters.accuracy}}"
+
+
+ 
+  - name: generate-data
+    container:
+      image: jupyter/scipy-notebook:latest
+      command: ["python", "/app/generate_data.py"]
+      volumeMounts:
+      - name: scripts
+        mountPath: /app
+    outputs:
+      artifacts:
+      - name: dataset 
+        path: dataset.csv 
+
+  - name: train-eval
+    inputs:
+      parameters:
+      - name: lr
+      artifacts:
+      - name: dataset 
+        path: /data/dataset.csv 
+    container:
+      image: jupyter/scipy-notebook:latest
+      command: ["sh","-c"]
+      args:
+        - | 
+          python /app/train_model.py "{{inputs.parameters.lr}}"
+          python /app/evaluate_model.py 
+
+      volumeMounts:
+      - name: scripts 
+        mountPath: /app 
+    outputs:
+      artifacts:
+      - name: model
+        path: /tmp/model.pkl
+      - name: metrics 
+        path: /tmp/metrics.json  
+      parameters:
+      - name: accuracy
+        valueFrom:
+          path: /tmp/accuracy.txt
+      - name: lr 
+        value: "{{inputs.parameters.lr}}"
+    
+  - name: select-best
+    inputs: 
+      parameters:
+      - name: lr_list
+      - name: acc_list 
+    container:
+      image: python:3.11
+      command: ["python", "-c"]
+      args:
+        - | 
+          import json 
+          lrs = json.loads(r'''{{inputs.parameters.lr_list}}''')
+          accs = json.loads(r'''{{inputs.parameters.acc_list}}''')
+
+          best_i = max(range(len(accs)), key=lambda i: float(accs[i]))
+          print("all:", list(zip(lrs,accs)))
+          print("BEST:", "lr=",lrs[best_i],"acc=",accs[best_i])  
+  volumes:
+  - name: scripts 
+    configMap:
+      name: ml-scripts

@@ -1,0 +1,84 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow 
+metadata:
+  generateName: ml-exp-
+spec:
+  entrypoint: ml-pipeline
+
+  arguments:
+    parameters:
+    - name: lr 
+      value: "0.1"
+    - name: max_iter 
+      value: "200"
+  
+  templates:
+  - name: ml-pipeline 
+    dag:
+      tasks:
+      - name: generate-data
+        template: generate-data 
+      
+      - name: train-model 
+        template: train-model 
+        dependencies: [generate-data]
+        arguments:
+          parameters:
+          - name: lr 
+            value: "{{workflow.parameters.lr}}" 
+          - name: max_iter 
+            value: "{{workflow.parameters.max_iter}}"
+          artifacts:
+          - name: dataset 
+            from: "{{tasks.generate-data.outputs.artifacts.dataset}}"
+  
+  - name: generate-data
+    container:
+      image: jupyter/scipy-notebook:latest
+      command: ["python","-c"]
+      args:
+        - |
+          import pandas as pd 
+          from sklearn.datasets import make_classification
+          X,y = make_classification(n_samples=100, n_features=4, random_state=42)
+          df = pd.DataFrame(X)
+          df["label"] = y
+          df.to_csv("/tmp/data.csv",index=False)
+    outputs:
+      artifacts:
+      - name: dataset
+        path: /tmp/data.csv 
+  
+  - name: train-model
+    inputs:
+      parameters:
+      - name: lr
+      - name: max_iter 
+      artifacts:
+      - name: dataset 
+        path: /tmp/data.csv 
+    container:
+      image: jupyter/scipy-notebook:latest
+      command: ["python","-c"]
+      args:
+        - |
+          import pandas as pd 
+          import joblib 
+          from sklearn.linear_model import LogisticRegression 
+          
+          lr = float("{{inputs.parameters.lr}}")
+          max_iter = int("{{inputs.parameters.max_iter}}")
+
+          df = pd.read_csv("/tmp/data.csv")
+          X = df.drop("label", axis=1)
+          y = df["label"]
+
+          model = LogisticRegression(C=1/lr, max_iter=max_iter)
+          model.fit(X,y)
+
+          joblib.dump(model, "/tmp/model.pkl")
+          print("trained with lr=",lr, "max_iter=",max_iter)
+    outputs:
+      artifacts:
+      - name: model 
+        path: /tmp/model.pkl 

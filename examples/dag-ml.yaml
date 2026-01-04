@@ -1,0 +1,97 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: ml-python-
+spec:
+  entrypoint: ml-pipeline
+  templates:
+  - name: ml-pipeline
+    dag:
+      tasks:
+      - name: generate-data
+        template: generate-data
+
+      - name: train-model
+        template: train-model
+        dependencies: [generate-data]
+        arguments:
+          artifacts:
+            - name: dataset
+              from: "{{tasks.generate-data.outputs.artifacts.dataset}}"
+
+      - name: evaluate-model
+        template: evaluate-model
+        dependencies: [train-model]
+        arguments:
+          artifacts:
+            - name: model
+              from: "{{tasks.train-model.outputs.artifacts.model}}"
+
+  - name: generate-data
+    container: 
+      image: jupyter/scipy-notebook:latest
+      command: ["python","-c"]
+      args:
+        - |
+          import pandas as pd
+          from sklearn.datasets import make_classification
+
+          X,y = make_classification(
+            n_samples=100,
+            n_features=4,
+            n_classes=2,
+            random_state=42
+            )
+          
+          df = pd.DataFrame(X, columns=["f1","f2","f3","f4"])
+          df["label"] = y
+          df.to_csv("/tmp/datasets.csv", index=False)
+
+          print("dataset saved")
+    outputs:
+      artifacts:
+      - name: dataset
+        path: /tmp/datasets.csv
+
+  - name: train-model
+    inputs:
+      artifacts:
+      - name: dataset
+        path: /tmp/datasets.csv
+    container:
+      image: jupyter/scipy-notebook:latest
+      command: ["python", "-c"]
+      args:
+        - |
+          import pandas as pd
+          import joblib
+          from sklearn.linear_model import LogisticRegression
+
+          df = pd.read_csv("/tmp/datasets.csv")
+          X = df.drop("label", axis=1)
+          y = df["label"]
+
+          model = LogisticRegression()
+          model.fit(X,y)
+
+          joblib.dump(model, "/tmp/model.pkl")
+          print("model trained and saved")
+    outputs:
+      artifacts:
+      - name: model
+        path: /tmp/model.pkl
+
+  - name: evaluate-model
+    inputs:
+      artifacts:
+      - name: model
+        path: /tmp/model.pkl
+    container:
+      image: jupyter/scipy-notebook:latest
+      command: ["python", "-c"]
+      args: 
+        - |
+          import joblib
+          model = joblib.load("/tmp/model.pkl")
+          print("Model coefficients:", model.coef_)
+

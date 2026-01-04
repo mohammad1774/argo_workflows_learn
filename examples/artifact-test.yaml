@@ -1,0 +1,17 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: azure-artifact-test-
+spec:
+  entrypoint: gen
+  templates:
+  - name: gen
+    container:
+      image: alpine:3.19
+      command: [sh, -c]
+      args: ["echo hello-azure > /tmp/out.txt; ls -l /tmp/out.txt; cat /tmp/out.txt"]
+    outputs:
+      artifacts:
+      - name: out
+        path: /tmp/out.txt
+
